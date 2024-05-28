@@ -19,23 +19,33 @@
 #include <stdarg.h>
 #include <util.h>
 #include <limits>
+#include <vector>
+#include <string>
 #include <unordered_map>
+#include <array>
 
 #ifdef SCOPE
 #include "scope.h"
 #endif
 
 // XRT includes
+#ifndef XRTSIM
 #include "experimental/xrt_bo.h"
 #include "experimental/xrt_ip.h"
 #include "experimental/xrt_device.h"
 #include "experimental/xrt_kernel.h"
 #include "experimental/xrt_xclbin.h"
 #include "experimental/xrt_error.h"
+#else
+#include <fpga.h>
+#endif
 
 using namespace vortex;
 
+#ifndef XRTSIM
 #define CPP_API
+#endif
+
 //#define BANK_INTERLEAVE
 
 #define MMIO_CTL_ADDR   0x00
@@ -60,9 +70,10 @@ struct platform_info_t {
 };
 
 static const platform_info_t g_platforms [] = {
-    {"xilinx_u50",     4, 0x1C, 0x0},
-    {"xilinx_u200",    4, 0x1C, 0x0},
-    {"xilinx_u280",    4, 0x1C, 0x0},
+    {"vortex_xrtsim",  4, 0x10, 0x0}, // 64 KB banks
+    {"xilinx_u50",     4, 0x1C, 0x0}, // 16 MB banks
+    {"xilinx_u200",    4, 0x1C, 0x0}, // 16 MB banks
+    {"xilinx_u280",    4, 0x1C, 0x0}, // 16 MB banks
     {"xilinx_vck5000", 0, 0x21, 0xC000000000},
 };
 
@@ -148,12 +159,12 @@ public:
         , xrtKernel_(kernel)
         , platform_(platform)
         , global_mem_(ALLOC_BASE_ADDR, GLOBAL_MEM_SIZE - ALLOC_BASE_ADDR, RAM_PAGE_SIZE, CACHE_BLOCK_SIZE)
-        , mpm_cache_(nullptr)
     {}
 
 #ifndef CPP_API
 
     ~vx_device() {
+        profiling_remove(profiling_id_);
         for (auto& entry : xrtBuffers_) {
         #ifdef BANK_INTERLEAVE
             xrtBOFree(entry);
@@ -227,6 +238,12 @@ public:
         }
     #endif
 
+        CHECK_ERR(dcr_initialize(this), {
+            return err;
+        });
+
+        profiling_id_ = profiling_add(this);
+
         return 0;
     }
 
@@ -246,6 +263,9 @@ public:
         case VX_CAPS_NUM_CORES:
             _value = (dev_caps_ >> 24) & 0xffff;
             break;
+        case VX_CAPS_NUM_BARRIERS:
+            _value = (dev_caps_ >> 40) & 0xff;
+            break;
         case VX_CAPS_CACHE_LINE_SIZE:
             _value = CACHE_BLOCK_SIZE;
             break;
@@ -253,7 +273,7 @@ public:
             _value = global_mem_size_;
             break;
         case VX_CAPS_LOCAL_MEM_SIZE:
-            _value = 1ull << ((dev_caps_ >> 40) & 0xff);
+            _value = 1ull << ((dev_caps_ >> 48) & 0xff);
             break;
         case VX_CAPS_LOCAL_MEM_ADDR:
             _value = LMEM_BASE_ADDR;
@@ -502,8 +522,10 @@ public:
             return err;
         });
 
+        profiling_begin(profiling_id_);
+
         // start execution
-        CHECK_ERR(device->write_register(MMIO_CTL_ADDR, CTL_AP_START), {
+        CHECK_ERR(this->write_register(MMIO_CTL_ADDR, CTL_AP_START), {
             return err;
         });
 
@@ -528,16 +550,21 @@ public:
 
         for (;;) {
             uint32_t status = 0;
-            CHECK_ERR(device->read_register(MMIO_CTL_ADDR, &status), {
+            CHECK_ERR(this->read_register(MMIO_CTL_ADDR, &status), {
                 return err;
             });
             bool is_done = (status & CTL_AP_DONE) == CTL_AP_DONE;
-            if (is_done || 0 == timeout) {
+            if (is_done)
                 break;
+            if (0 == timeout) {
+                return -1;
             }
             nanosleep(&sleep_time, nullptr);
             timeout -= sleep_time_ms;
         };
+
+        profiling_end(profiling_id_);
+
         return 0;
     }
 
@@ -581,6 +608,7 @@ private:
     uint64_t global_mem_size_;
     DeviceConfig dcrs_;
     std::unordered_map<uint32_t, std::array<uint64_t, 32>> mpm_cache_;
+    int profiling_id_;
 
 #ifdef BANK_INTERLEAVE
 
@@ -760,6 +788,8 @@ extern int vx_dev_open(vx_device_h* hdevice) {
         return -1;
     });
 
+#ifndef XRTSIM
+
     CHECK_ERR(xrtDeviceLoadXclbinFile(xrtDevice, xlbin_path_s), {
         dump_xrt_error(xrtDevice, err);
         xrtDeviceClose(xrtDevice);
@@ -777,6 +807,12 @@ extern int vx_dev_open(vx_device_h* hdevice) {
         xrtDeviceClose(xrtDevice);
         return -1;
     });
+
+#else
+
+    xrtKernelHandle xrtKernel = nullptr;
+
+#endif
 
     int device_name_size;
     xrtXclbinGetXSAName(xrtDevice, nullptr, 0, &device_name_size);
@@ -836,15 +872,6 @@ extern int vx_dev_open(vx_device_h* hdevice) {
             return ret;
         }
     }
-#endif
-
-    CHECK_ERR(dcr_initialize(device), {
-        delete device;
-        return err;
-    });
-
-#ifdef DUMP_PERF_STATS
-    perf_add_device(device);
 #endif
 
     DBGPRINT("DEV_OPEN: hdevice=%p\n", (void*)device);
@@ -1026,7 +1053,7 @@ extern int vx_copy_to_dev(vx_buffer_h hbuffer, const void* host_ptr, uint64_t ds
 
     DBGPRINT("COPY_TO_DEV: hbuffer=%p, host_addr=%p, dst_offset=%ld, size=%ld\n", hbuffer, host_ptr, dst_offset, size);
 
-    CHECK_ERR(device->upload(buffer->addr + dst_offset, host_ptr, asize), {
+    CHECK_ERR(device->upload(buffer->addr + dst_offset, host_ptr, size), {
         return err;
     });
 
@@ -1045,7 +1072,7 @@ extern int vx_copy_from_dev(void* host_ptr, vx_buffer_h hbuffer, uint64_t src_of
 
     DBGPRINT("COPY_FROM_DEV: hbuffer=%p, host_addr=%p, src_offset=%ld, size=%ld\n", hbuffer, host_ptr, src_offset, size);
 
-    CHECK_ERR(device->download(host_ptr, buffer->addr + src_offset, asize), {
+    CHECK_ERR(device->download(host_ptr, buffer->addr + src_offset, size), {
         return err;
     });
 
@@ -1075,7 +1102,11 @@ extern int vx_ready_wait(vx_device_h hdevice, uint64_t timeout) {
 
     auto device = ((vx_device*)hdevice);
 
-    return device->ready_wait(timeout);
+    CHECK_ERR(device->ready_wait(timeout), {
+        return err;
+    });
+
+    return  0;
 }
 
 extern int vx_dcr_read(vx_device_h hdevice, uint32_t addr, uint32_t* value) {

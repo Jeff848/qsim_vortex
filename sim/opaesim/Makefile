@@ -3,6 +3,7 @@ include ../common.mk
 DESTDIR ?= $(CURDIR)
 
 SRC_DIR := $(VORTEX_HOME)/sim/opaesim
+AFU_DIR := $(RTL_DIR)/afu/opae
 
 CXXFLAGS += -std=c++11 -Wall -Wextra -Wfatal-errors -Wno-array-bounds
 CXXFLAGS += -fPIC -Wno-maybe-uninitialized
@@ -85,7 +86,7 @@ VL_FLAGS += -j $(THREADS)
 ifdef DEBUG
 	VL_FLAGS += --trace --trace-structs $(DBG_FLAGS)
 	CXXFLAGS += -g -O0 $(DBG_FLAGS)
-else    
+else
 	VL_FLAGS += -DNDEBUG
 	CXXFLAGS += -O3 -DNDEBUG
 endif

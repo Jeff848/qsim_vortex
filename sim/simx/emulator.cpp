@@ -224,13 +224,20 @@ void Emulator::resume(uint32_t wid) {
   }
 }
 
-void Emulator::wspawn(uint32_t num_warps, Word nextPC) {
+bool Emulator::wspawn(uint32_t num_warps, Word nextPC) {
+  num_warps = std::min<uint32_t>(num_warps, arch_.num_warps());
+  if (num_warps < 2 && active_warps_.count() == 1)
+    return true;
   wspawn_.valid = true;
-  wspawn_.num_warps = std::min<uint32_t>(num_warps, arch_.num_warps());
+  wspawn_.num_warps = num_warps;
   wspawn_.nextPC = nextPC;
+  return false;
 }
 
-void Emulator::barrier(uint32_t bar_id, uint32_t count, uint32_t wid) {
+bool Emulator::barrier(uint32_t bar_id, uint32_t count, uint32_t wid) {
+  if (count < 2)
+    return true;
+
   uint32_t bar_idx = bar_id & 0x7fffffff;
   bool is_global = (bar_id >> 31);
 
@@ -257,6 +264,7 @@ void Emulator::barrier(uint32_t bar_id, uint32_t count, uint32_t wid) {
       barrier.reset();
     }
   }
+  return false;
 }
 
 void Emulator::icache_read(void *data, uint64_t addr, uint32_t size) {
@@ -358,11 +366,12 @@ Word Emulator::get_csr(uint32_t addr, uint32_t tid, uint32_t wid) {
   case VX_CSR_THREAD_ID:  return tid;
   case VX_CSR_WARP_ID:    return wid;
   case VX_CSR_CORE_ID:    return core_->id();
-  case VX_CSR_THREAD_MASK:return warps_.at(wid).tmask.to_ulong();
-  case VX_CSR_WARP_MASK:  return active_warps_.to_ulong();
+  case VX_CSR_ACTIVE_THREADS:return warps_.at(wid).tmask.to_ulong();
+  case VX_CSR_ACTIVE_WARPS:return active_warps_.to_ulong();
   case VX_CSR_NUM_THREADS:return arch_.num_threads();
   case VX_CSR_NUM_WARPS:  return arch_.num_warps();
   case VX_CSR_NUM_CORES:  return uint32_t(arch_.num_cores()) * arch_.num_clusters();
+  case VX_CSR_NUM_BARRIERS:return arch_.num_barriers();
   case VX_CSR_MSCRATCH:   return csr_mscratch_;
   CSR_READ_64(VX_CSR_MCYCLE, core_perf.cycles);
   CSR_READ_64(VX_CSR_MINSTRET, core_perf.instrs);

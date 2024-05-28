@@ -140,13 +140,13 @@ int main(int argc, char *argv[]) {
   std::cout << "open device connection" << std::endl;
   RT_CHECK(vx_dev_open(&device));
 
-  uint32_t num_points = size * size;
-  uint32_t buf_size = num_points * sizeof(TYPE);
+  uint32_t size_sq = size * size;
+  uint32_t buf_size = size_sq * sizeof(TYPE);
 
   std::cout << "data type: " << Comparator<TYPE>::type_str() << std::endl;
   std::cout << "matrix size: " << size << "x" << size << std::endl;
 
-  kernel_arg.num_tasks = num_points;
+  kernel_arg.num_tasks = size_sq;
   kernel_arg.size = size;
   kernel_arg.log2_size = log2(size);
 
@@ -159,19 +159,17 @@ int main(int argc, char *argv[]) {
   RT_CHECK(vx_mem_alloc(device, buf_size, VX_MEM_WRITE, &C_buffer));
   RT_CHECK(vx_mem_address(C_buffer, &kernel_arg.C_addr));
 
-  std::cout << "dev_argA=0x" << std::hex << kernel_arg.A_addr << std::endl;
-  std::cout << "dev_argB=0x" << std::hex << kernel_arg.B_addr << std::endl;
-  std::cout << "dev_argC=0x" << std::hex << kernel_arg.C_addr << std::endl;
+  std::cout << "A_addr=0x" << std::hex << kernel_arg.A_addr << std::endl;
+  std::cout << "B_addr=0x" << std::hex << kernel_arg.B_addr << std::endl;
+  std::cout << "C_addr=0x" << std::hex << kernel_arg.C_addr << std::endl;
 
   // generate source data
-  std::vector<TYPE> h_A(num_points);
-  std::vector<TYPE> h_B(num_points);
-  std::vector<TYPE> h_C(num_points);
-  for (uint32_t i = 0; i < num_points; ++i) {
-    auto a = static_cast<float>(std::rand()) / RAND_MAX;
-    auto b = static_cast<float>(std::rand()) / RAND_MAX;
-    h_A[i] = static_cast<TYPE>(a * size);
-    h_B[i] = static_cast<TYPE>(b * size);
+  std::vector<TYPE> h_A(size_sq);
+  std::vector<TYPE> h_B(size_sq);
+  std::vector<TYPE> h_C(size_sq);
+  for (uint32_t i = 0; i < size_sq; ++i) {
+    h_A[i] = Comparator<TYPE>::generate();
+    h_B[i] = Comparator<TYPE>::generate();
   }
 
   // upload matrix A buffer
@@ -216,7 +214,7 @@ int main(int argc, char *argv[]) {
   std::cout << "verify result" << std::endl;
   int errors = 0;
   {
-    std::vector<TYPE> h_ref(num_points);
+    std::vector<TYPE> h_ref(size_sq);
     matmul_cpu(h_ref.data(), h_A.data(), h_B.data(), size, size);
 
     for (uint32_t i = 0; i < h_ref.size(); ++i) {
