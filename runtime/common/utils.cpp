@@ -17,81 +17,87 @@
 #include <list>
 #include <cstring>
 #include <vector>
+#include <unordered_map>
 #include <vortex.h>
 #include <assert.h>
 
 #define RT_CHECK(_expr, _cleanup)                               \
-   do {                                                         \
-     int _ret = _expr;                                          \
-     if (0 == _ret)                                             \
-       break;                                                   \
-     printf("Error: '%s' returned %d!\n", #_expr, (int)_ret);   \
-     _cleanup                                                   \
-   } while (false)
+  do {                                                         \
+    int _ret = _expr;                                          \
+    if (0 == _ret)                                             \
+      break;                                                   \
+    printf("Error: '%s' returned %d!\n", #_expr, (int)_ret);   \
+    _cleanup                                                   \
+  } while (false)
 
 uint64_t aligned_size(uint64_t size, uint64_t alignment) {
-    assert(0 == (alignment & (alignment - 1)));
-    return (size + alignment - 1) & ~(alignment - 1);
+  assert(0 == (alignment & (alignment - 1)));
+  return (size + alignment - 1) & ~(alignment - 1);
 }
 
 bool is_aligned(uint64_t addr, uint64_t alignment) {
-    assert(0 == (alignment & (alignment - 1)));
-    return 0 == (addr & (alignment - 1));
+  assert(0 == (alignment & (alignment - 1)));
+  return 0 == (addr & (alignment - 1));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
 class AutoPerfDump {
 public:
-    AutoPerfDump() : perf_class_(0) {}
-
-    ~AutoPerfDump() {
-      for (auto hdevice : hdevices_) {
-        vx_dump_perf(hdevice, stdout);
-      }
+  AutoPerfDump() : perf_class_(0) {
+    auto profiling_s = getenv("VORTEX_PROFILING");
+    if (profiling_s) {
+      perf_class_ = std::atoi(profiling_s);
     }
+  }
 
-    void add_device(vx_device_h hdevice) {
-      auto perf_class_s = getenv("PERF_CLASS");
-      if (perf_class_s) {
-        perf_class_ = std::atoi(perf_class_s);
-        vx_dcr_write(hdevice, VX_DCR_BASE_MPM_CLASS, perf_class_);
-      }
-      hdevices_.push_back(hdevice);
-    }
+  ~AutoPerfDump() {}
 
-    void remove_device(vx_device_h hdevice) {
-      hdevices_.remove(hdevice);
-      vx_dump_perf(hdevice, stdout);
-    }
+  int add(vx_device_h hdevice) {
+    int ret = devices_.size();
+    devices_[ret] = hdevice;
+    return ret;
+  }
 
-    int get_perf_class() const {
-      return perf_class_;
-    }
+  void remove(int id) {
+    devices_.erase(id);
+  }
+
+  void begin(int id) {
+    auto device = devices_.at(id);
+    vx_dcr_write(device, VX_DCR_BASE_MPM_CLASS, perf_class_);
+  }
+
+  void end(int id) {
+    auto device = devices_.at(id);
+    vx_dump_perf(device, stdout);
+  }
+
+  int get_perf_class() const {
+    return perf_class_;
+  }
 
 private:
-    std::list<vx_device_h> hdevices_;
-    int perf_class_;
+  std::unordered_map<int, vx_device_h> devices_;
+  int perf_class_;
 };
 
-#ifdef DUMP_PERF_STATS
 AutoPerfDump gAutoPerfDump;
-#endif
 
-void perf_add_device(vx_device_h hdevice) {
-#ifdef DUMP_PERF_STATS
-  gAutoPerfDump.add_device(hdevice);
-#else
-  (void)hdevice;
-#endif
+int profiling_add(vx_device_h hdevice) {
+  return gAutoPerfDump.add(hdevice);
 }
 
-void perf_remove_device(vx_device_h hdevice) {
-#ifdef DUMP_PERF_STATS
-  gAutoPerfDump.remove_device(hdevice);
-#else
-  (void)hdevice;
-#endif
+void profiling_remove(int id) {
+  gAutoPerfDump.remove(id);
+}
+
+void profiling_begin(int id) {
+  gAutoPerfDump.begin(id);
+}
+
+void profiling_end(int id) {
+  gAutoPerfDump.end(id);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -728,6 +734,50 @@ extern int vx_dump_perf(vx_device_h hdevice, FILE* stream) {
   fprintf(stream, "PERF: instrs=%ld, cycles=%ld, IPC=%f\n", total_instrs, max_cycles, IPC);
 
   fflush(stream);
+
+  return 0;
+}
+
+int vx_check_occupancy(vx_device_h hdevice, uint32_t group_size, uint32_t* max_barriers, uint32_t* max_localmem) {
+   // check group size
+  uint64_t warps_per_core, threads_per_warp;
+  RT_CHECK(vx_dev_caps(hdevice, VX_CAPS_NUM_WARPS, &warps_per_core), {
+    return _ret;
+  });
+  RT_CHECK(vx_dev_caps(hdevice, VX_CAPS_NUM_THREADS, &threads_per_warp), {
+    return _ret;
+  });
+  uint32_t threads_per_core = warps_per_core * threads_per_warp;
+  if (group_size > threads_per_core) {
+    printf("Error: device cannot schedule group size > (%d)\n", threads_per_core);
+    return -1;
+  }
+
+  // calculate groups occupancy
+  int warps_per_group = (group_size + threads_per_warp-1) / threads_per_warp;
+  int groups_per_core = warps_per_core / warps_per_group;
+
+  // check barriers capacity
+  if (max_barriers) {
+    uint64_t num_barriers;
+    RT_CHECK(vx_dev_caps(hdevice, VX_CAPS_NUM_BARRIERS, &num_barriers), {
+      return _ret;
+    });
+    if (warps_per_group < 2) {
+      *max_barriers = -1;
+    } else {
+      *max_barriers = num_barriers / groups_per_core;
+    }
+  }
+
+  // check local memory capacity
+  if (max_localmem) {
+    uint64_t local_mem_size;
+    RT_CHECK(vx_dev_caps(hdevice, VX_CAPS_LOCAL_MEM_SIZE, &local_mem_size), {
+      return _ret;
+    });
+    *max_localmem = local_mem_size / groups_per_core;
+  }
 
   return 0;
 }

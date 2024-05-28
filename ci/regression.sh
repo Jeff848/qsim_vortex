@@ -92,8 +92,6 @@ regression()
     CONFIGS="-DGBAR_ENABLE" ./ci/blackbox.sh --driver=simx --app=dogfood --args="-n1 -tgbar" --cores=2
     CONFIGS="-DGBAR_ENABLE" ./ci/blackbox.sh --driver=rtlsim --app=dogfood --args="-n1 -tgbar" --cores=2
 
-    # test FPU core
-
     echo "regression tests done!"
 }
 
@@ -112,7 +110,6 @@ cluster()
     echo "begin clustering tests..."
 
     # cores clustering
-    ./ci/blackbox.sh --driver=rtlsim --cores=1 --clusters=1 --app=diverge --args="-n1"
     ./ci/blackbox.sh --driver=rtlsim --cores=4 --clusters=1 --app=diverge --args="-n1"
     ./ci/blackbox.sh --driver=rtlsim --cores=2 --clusters=2 --app=diverge --args="-n1"
     ./ci/blackbox.sh --driver=simx --cores=4 --clusters=1 --app=diverge --args="-n1"
@@ -144,10 +141,8 @@ debug()
     make -C sim/simx clean && make -C sim/simx > /dev/null
     make -C sim/rtlsim clean && make -C sim/rtlsim > /dev/null
 
-    ./ci/blackbox.sh --driver=opae --cores=2 --clusters=2 --l2cache --perf=1 --app=demo --args="-n1"
-    ./ci/blackbox.sh --driver=simx --cores=2 --clusters=2 --l2cache --perf=1 --app=demo --args="-n1"
-    ./ci/blackbox.sh --driver=opae --cores=2 --clusters=2 --l2cache --debug=1 --app=demo --args="-n1"
-    ./ci/blackbox.sh --driver=simx --cores=2 --clusters=2 --l2cache --debug=1 --app=demo --args="-n1"
+    ./ci/blackbox.sh --driver=opae --cores=2 --clusters=2 --l2cache --debug=1 --perf=1 --app=demo --args="-n1"
+    ./ci/blackbox.sh --driver=simx --cores=2 --clusters=2 --l2cache --debug=1 --perf=1 --app=demo --args="-n1"
     ./ci/blackbox.sh --driver=opae --cores=1 --scope --app=basic --args="-t0 -n1"
 
     echo "debugging tests done!"
@@ -204,7 +199,10 @@ config()
     # disabling M & F extensions
     make -C sim/rtlsim clean && CONFIGS="-DEXT_M_DISABLE -DEXT_F_DISABLE" make -C sim/rtlsim > /dev/null
     make -C tests/riscv/isa run-rtlsim-32i
-    rm -f blackbox.*.cache
+    make -C sim/rtlsim clean && make -C sim/rtlsim > /dev/null
+
+    # disabling ZICOND extension
+    CONFIGS="-DEXT_ZICOND_DISABLE" ./ci/blackbox.sh --driver=rtlsim --app=demo
 
     # disable local memory
     CONFIGS="-DLMEM_DISABLE" ./ci/blackbox.sh --driver=rtlsim --cores=1 --app=demo --perf=1

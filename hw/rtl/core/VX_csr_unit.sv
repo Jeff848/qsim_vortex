@@ -1,10 +1,10 @@
 // Copyright © 2019-2023
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 // http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -26,7 +26,7 @@ module VX_csr_unit import VX_gpu_pkg::*; #(
     VX_mem_perf_if.slave        mem_perf_if,
     VX_pipeline_perf_if.slave   pipeline_perf_if,
 `endif
-    
+
 `ifdef EXT_F_ENABLE
     VX_fpu_csr_if.slave         fpu_csr_if [`NUM_FPU_BLOCKS],
 `endif
@@ -39,10 +39,10 @@ module VX_csr_unit import VX_gpu_pkg::*; #(
     `UNUSED_PARAM (CORE_ID)
     localparam PID_BITS   = `CLOG2(`NUM_THREADS / NUM_LANES);
     localparam PID_WIDTH  = `UP(PID_BITS);
-    localparam DATAW      = `UUID_WIDTH + `NW_WIDTH + NUM_LANES + `XLEN + `NR_BITS + 1 + NUM_LANES * `XLEN + PID_WIDTH + 1 + 1;
+    localparam DATAW      = `UUID_WIDTH + `NW_WIDTH + NUM_LANES + `PC_BITS + `NR_BITS + 1 + NUM_LANES * `XLEN + PID_WIDTH + 1 + 1;
 
     `UNUSED_VAR (execute_if.data.rs3_data)
-    
+
     reg [NUM_LANES-1:0][`XLEN-1:0]  csr_read_data;
     reg  [`XLEN-1:0]                csr_write_data;
     wire [`XLEN-1:0]                csr_read_data_ro, csr_read_data_rw;
@@ -51,20 +51,22 @@ module VX_csr_unit import VX_gpu_pkg::*; #(
     wire                            csr_wr_enable;
     wire                            csr_req_ready;
 
-    // wait for all pending instructions to complete
+    wire [`VX_CSR_ADDR_BITS-1:0] csr_addr = execute_if.data.op_args.csr.addr;
+    wire [`NRI_BITS-1:0] csr_imm = execute_if.data.op_args.csr.imm;
+
+    wire is_fpu_csr = (csr_addr <= `VX_CSR_FCSR);
+
+    // wait for all pending instructions for current warp to complete
     assign sched_csr_if.alm_empty_wid = execute_if.data.wid;
-    wire no_pending_instr = sched_csr_if.alm_empty;
-    
+    wire no_pending_instr = sched_csr_if.alm_empty || ~is_fpu_csr;
+
     wire csr_req_valid = execute_if.valid && no_pending_instr;
     assign execute_if.ready = csr_req_ready && no_pending_instr;
-
-    wire [`VX_CSR_ADDR_BITS-1:0] csr_addr = execute_if.data.imm[`VX_CSR_ADDR_BITS-1:0];
-    wire [`NRI_BITS-1:0] csr_imm = execute_if.data.imm[`VX_CSR_ADDR_BITS +: `NRI_BITS];
 
     wire [NUM_LANES-1:0][`XLEN-1:0] rs1_data;
     `UNUSED_VAR (rs1_data)
     for (genvar i = 0; i < NUM_LANES; ++i) begin
-        assign rs1_data[i] = execute_if.data.rs1_data[i][`XLEN-1:0];
+        assign rs1_data[i] = execute_if.data.rs1_data[i];
     end
 
     wire csr_write_enable = (execute_if.data.op_type == `INST_SFU_CSRRW);
@@ -86,14 +88,14 @@ module VX_csr_unit import VX_gpu_pkg::*; #(
         .cycles         (sched_csr_if.cycles),
         .active_warps   (sched_csr_if.active_warps),
         .thread_masks   (sched_csr_if.thread_masks),
-    
+
     `ifdef EXT_F_ENABLE
-        .fpu_csr_if     (fpu_csr_if), 
-    `endif    
+        .fpu_csr_if     (fpu_csr_if),
+    `endif
 
         .read_enable    (csr_req_valid && csr_rd_enable),
         .read_uuid      (execute_if.data.uuid),
-        .read_wid       (execute_if.data.wid),        
+        .read_wid       (execute_if.data.wid),
         .read_addr      (csr_addr),
         .read_data_ro   (csr_read_data_ro),
         .read_data_rw   (csr_read_data_rw),
@@ -116,7 +118,7 @@ module VX_csr_unit import VX_gpu_pkg::*; #(
             assign wtid[i] = `XLEN'(i);
         end
         assign gtid[i] = (`XLEN'(CORE_ID) << (`NW_BITS + `NT_BITS)) + (`XLEN'(execute_if.data.wid) << `NT_BITS) + wtid[i];
-    end  
+    end
 
     always @(*) begin
         csr_rd_enable = 0;
@@ -132,7 +134,7 @@ module VX_csr_unit import VX_gpu_pkg::*; #(
 
     // CSR write
 
-    assign csr_req_data = execute_if.data.use_imm ? `XLEN'(csr_imm) : rs1_data[0];
+    assign csr_req_data = execute_if.data.op_args.csr.use_imm ? `XLEN'(csr_imm) : rs1_data[0];
     assign csr_wr_enable = (csr_write_enable || (| csr_req_data));
 
     always @(*) begin
@@ -151,7 +153,7 @@ module VX_csr_unit import VX_gpu_pkg::*; #(
     end
 
     // unlock the warp
-    assign sched_csr_if.unlock_warp = csr_req_valid && csr_req_ready && execute_if.data.eop;
+    assign sched_csr_if.unlock_warp = csr_req_valid && csr_req_ready && execute_if.data.eop && is_fpu_csr;
     assign sched_csr_if.unlock_wid = execute_if.data.wid;
 
     VX_elastic_buffer #(
