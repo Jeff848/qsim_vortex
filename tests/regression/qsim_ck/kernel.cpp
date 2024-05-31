@@ -4,55 +4,47 @@
 #include <vx_print.h>
 #include "common.h"
 
-void kernel_body(int local_task_id, int group_id, int local_group_id, int warps_per_group, kernel_arg_t *arg) {
-	auto local_ptr = reinterpret_cast<TYPE*>(arg->local_addr);
-	auto A_ptr     = reinterpret_cast<TYPE*>(arg->A_addr);
-	auto B_ptr     = reinterpret_cast<TYPE*>(arg->B_addr);
-	auto C_ptr     = reinterpret_cast<TYPE*>(arg->C_addr);
-	auto size      = arg->size;
-  auto tile_size = arg->tile_size;
-	auto num_groups = arg->num_groups;
-	auto group_size = arg->group_size;
-	auto num_tiles = size / tile_size;
+inline char is_log2(uint32_t x) {
+    return ((x & (x-1)) == 0);
+}
 
-	// Determine row and column indices of the current subtask
-	auto l_row = local_task_id / tile_size;
-	auto l_col = local_task_id % tile_size;
+// task_id: qubit number (qidx)
+void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
+	auto A = reinterpret_cast<TYPE*>(arg->A_addr);
+	auto B = reinterpret_cast<TYPE*>(arg->B_addr);
+	auto C = reinterpret_cast<TYPE*>(arg->C_addr);
+    auto nq = arg->nq;
 
-	// Determine row and column indices of the current task
-	auto g_row = (group_id / num_tiles) * tile_size + l_row;
-  auto g_col = (group_id % num_tiles) * tile_size + l_col;
+    uint32_t st_b = 4 * arg->max_num_gates * task_id;       // starting index of gate array
+    uint32_t st_a = 2 * task_id;                            // starting index of state vector
 
-	// Allocate local memory for the tile of matrix A & B
-	auto local_A = local_ptr + local_group_id * group_size * 2;
-	auto local_B = local_A + group_size;
+    // initial vector of qubit qidx
+    TYPE v1 = A[st_a];
+    TYPE v2 = A[st_a + 1];
 
-	TYPE sum(0);
+    // g: gate number
+    for (uint32_t g = 0; g < (arg->max_num_gates); g++) {
+        // end of gate array
+        if (B[st_b + 4 * g] == 100) {
+            break;
+        }
 
-	// Loop over tiles
-	for (uint32_t k = 0; k < size; k += tile_size) {
-		// Load tile of matrix A & B to local memory
-		local_A[l_row * tile_size + l_col] = A_ptr[g_row * size + (k + l_col)];
-		local_B[l_row * tile_size + l_col] = B_ptr[(k + l_row) * size + g_col];
+        // matrix - vector multiplication
+        // applying gates
+        TYPE nv1 = B[st_b + 4*g] * v1 + B[st_b + 4*g + 1] * v2;
+        TYPE nv2 = B[st_b + 4*g + 2] * v1 + B[st_b + 4*g + 3] * v2;
 
-		// Synchronize all warps in current group
-		vx_barrier(local_group_id * 2 + 0, warps_per_group);
+        v1 = nv1;
+        v2 = nv2;
+    }
 
-		// Compute partial sum for the local tile
-		for (uint32_t j = 0; j < tile_size; ++j) {
-			sum += local_A[l_row * tile_size + j] * local_B[j * tile_size + l_col];
-		}
-
-		// Synchronize all warps in current group
-		vx_barrier(local_group_id * 2 + 1, warps_per_group);
-	}
-
-	// Store the computed sum into the result matrix C
-	C_ptr[g_row * size + g_col] = sum;
+    C[st_a] = v1;
+    C[st_a + 1] = v2;
+    // vx_printf("task=%d\n", task_id);
 }
 
 int main() {
 	kernel_arg_t* arg = (kernel_arg_t*)csr_read(VX_CSR_MSCRATCH);
-	vx_spawn_task_groups(arg->num_groups, arg->group_size, (vx_spawn_task_groups_cb)kernel_body, arg);
+	vx_spawn_tasks(arg->num_tasks, (vx_spawn_tasks_cb)kernel_body, arg);
 	return 0;
 }

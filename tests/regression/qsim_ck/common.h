@@ -2,18 +2,16 @@
 #define _COMMON_H_
 
 #ifndef TYPE
-#define TYPE int
+#define TYPE float
 #endif
 
 typedef struct {
-  uint32_t num_groups;
-  uint32_t group_size;
-  uint32_t size;
-  uint32_t tile_size;
-  uint64_t local_addr;
+  uint32_t num_tasks;
+  uint32_t max_num_gates;
+  uint32_t nq;
   uint64_t A_addr;
   uint64_t B_addr;
-  uint64_t C_addr;
+  uint64_t C_addr;  
 } kernel_arg_t;
 
 #endif
