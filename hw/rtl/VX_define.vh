@@ -1,10 +1,10 @@
 // Copyright © 2019-2023
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 // http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -44,6 +44,9 @@
 
 `define NR_BITS         `CLOG2(`NUM_REGS)
 
+`define DV_STACK_SIZE   `UP(`NUM_THREADS-1)
+`define DV_STACK_SIZEW  `UP(`CLOG2(`DV_STACK_SIZE))
+
 `define PERF_CTR_BITS   44
 
 `ifndef NDEBUG
@@ -51,6 +54,10 @@
 `else
 `define UUID_WIDTH      1
 `endif
+
+`define PC_BITS         (`XLEN-1)
+`define OFFSET_BITS     12
+`define IMM_BITS        `XLEN
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -90,10 +97,10 @@
 
 `define INST_FL         7'b0000111 // float load instruction
 `define INST_FS         7'b0100111 // float store  instruction
-`define INST_FMADD      7'b1000011  
+`define INST_FMADD      7'b1000011
 `define INST_FMSUB      7'b1000111
 `define INST_FNMSUB     7'b1001011
-`define INST_FNMADD     7'b1001111 
+`define INST_FNMADD     7'b1001111
 `define INST_FCI        7'b1010011 // float common instructions
 
 // Custom extension opcodes
@@ -101,6 +108,10 @@
 `define INST_EXT2       7'b0101011 // 0x2B
 `define INST_EXT3       7'b1011011 // 0x5B
 `define INST_EXT4       7'b1111011 // 0x7B
+
+// Opcode extensions
+`define INST_R_F7_MUL   7'b0000001
+`define INST_R_F7_ZICOND 7'b0000111
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -115,36 +126,45 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 `define INST_OP_BITS    4
-`define INST_MOD_BITS   3
+`define INST_ARGS_BITS   $bits(op_args_t)
 `define INST_FMT_BITS   2
 
 ///////////////////////////////////////////////////////////////////////////////
 
 `define INST_ALU_ADD         4'b0000
+//`define INST_ALU_UNUSED    4'b0001
 `define INST_ALU_LUI         4'b0010
 `define INST_ALU_AUIPC       4'b0011
 `define INST_ALU_SLTU        4'b0100
 `define INST_ALU_SLT         4'b0101
+//`define INST_ALU_UNUSED    4'b0110
 `define INST_ALU_SUB         4'b0111
 `define INST_ALU_SRL         4'b1000
 `define INST_ALU_SRA         4'b1001
+`define INST_ALU_CZEQ        4'b1010
+`define INST_ALU_CZNE        4'b1011
 `define INST_ALU_AND         4'b1100
 `define INST_ALU_OR          4'b1101
 `define INST_ALU_XOR         4'b1110
 `define INST_ALU_SLL         4'b1111
-`define INST_ALU_OTHER       4'b0111
+
+
+`define ALU_TYPE_BITS        2
+`define ALU_TYPE_ARITH       0
+`define ALU_TYPE_BRANCH      1
+`define ALU_TYPE_MULDIV      2
+`define ALU_TYPE_OTHER       3
+
 `define INST_ALU_BITS        4
 `define INST_ALU_CLASS(op)   op[3:2]
 `define INST_ALU_SIGNED(op)  op[0]
 `define INST_ALU_IS_SUB(op)  op[1]
-`define INST_ALU_IS_BR(mod)  mod[0]
-`define INST_ALU_IS_M(mod)   mod[1]
-`define INST_ALU_IS_W(mod)   mod[2]
+`define INST_ALU_IS_CZERO(op) (op[3:1] == 3'b101)
 
 `define INST_BR_EQ           4'b0000
 `define INST_BR_NE           4'b0010
-`define INST_BR_LTU          4'b0100 
-`define INST_BR_GEU          4'b0110 
+`define INST_BR_LTU          4'b0100
+`define INST_BR_GEU          4'b0110
 `define INST_BR_LT           4'b0101
 `define INST_BR_GE           4'b0111
 `define INST_BR_JAL          4'b1000
@@ -184,14 +204,14 @@
 `define INST_FMT_HU          3'b101
 `define INST_FMT_WU          3'b110
 
-`define INST_LSU_LB          4'b0000 
+`define INST_LSU_LB          4'b0000
 `define INST_LSU_LH          4'b0001
 `define INST_LSU_LW          4'b0010
 `define INST_LSU_LD          4'b0011 // new for RV64I LD
 `define INST_LSU_LBU         4'b0100
 `define INST_LSU_LHU         4'b0101
 `define INST_LSU_LWU         4'b0110 // new for RV64I LWU
-`define INST_LSU_SB          4'b1000 
+`define INST_LSU_SB          4'b1000
 `define INST_LSU_SH          4'b1001
 `define INST_LSU_SW          4'b1010
 `define INST_LSU_SD          4'b1011 // new for RV64I SD
@@ -205,9 +225,9 @@
 `define INST_FENCE_D         1'h0
 `define INST_FENCE_I         1'h1
 
-`define INST_FPU_ADD         4'b0000 
-`define INST_FPU_SUB         4'b0001 
-`define INST_FPU_MUL         4'b0010 
+`define INST_FPU_ADD         4'b0000
+`define INST_FPU_SUB         4'b0001
+`define INST_FPU_MUL         4'b0010
 `define INST_FPU_DIV         4'b0011
 `define INST_FPU_SQRT        4'b0100
 `define INST_FPU_CMP         4'b0101 // mod: LE=0, LT=1, EQ=2
@@ -217,17 +237,16 @@
 `define INST_FPU_F2U         4'b1001
 `define INST_FPU_I2F         4'b1010
 `define INST_FPU_U2F         4'b1011
-`define INST_FPU_MADD        4'b1100 
-`define INST_FPU_MSUB        4'b1101   
-`define INST_FPU_NMSUB       4'b1110   
+`define INST_FPU_MADD        4'b1100
+`define INST_FPU_MSUB        4'b1101
+`define INST_FPU_NMSUB       4'b1110
 `define INST_FPU_NMADD       4'b1111
 `define INST_FPU_BITS        4
-`define INST_FPU_IS_W(mod)   (mod[4])
-`define INST_FPU_IS_CLASS(op, mod) (op == `INST_FPU_MISC && mod == 3)
-`define INST_FPU_IS_MVXW(op, mod) (op == `INST_FPU_MISC && mod == 4)
+`define INST_FPU_IS_CLASS(op, frm) (op == `INST_FPU_MISC && frm == 3)
+`define INST_FPU_IS_MVXW(op, frm) (op == `INST_FPU_MISC && frm == 4)
 
 `define INST_SFU_TMC         4'h0
-`define INST_SFU_WSPAWN      4'h1 
+`define INST_SFU_WSPAWN      4'h1
 `define INST_SFU_SPLIT       4'h2
 `define INST_SFU_JOIN        4'h3
 `define INST_SFU_BAR         4'h4
@@ -235,7 +254,6 @@
 `define INST_SFU_CSRRW       4'h6
 `define INST_SFU_CSRRS       4'h7
 `define INST_SFU_CSRRC       4'h8
-`define INST_SFU_CMOV        4'h9
 `define INST_SFU_BITS        4
 `define INST_SFU_CSR(f3)     (4'h6 + 4'(f3) - 4'h1)
 `define INST_SFU_IS_WCTL(op) (op <= 5)
@@ -243,51 +261,35 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-// non-cacheable tag bits
-`define NC_TAG_BITS             1
-
-// cache address type bits
-`ifdef SM_ENABLE
-`define CACHE_ADDR_TYPE_BITS    (`NC_TAG_BITS + 1)
-`else
-`define CACHE_ADDR_TYPE_BITS    `NC_TAG_BITS
-`endif
-
-`define ARB_SEL_BITS(I, O)      ((I > O) ? `CLOG2((I + O - 1) / O) : 0)
+`define ARB_SEL_BITS(I, O)  ((I > O) ? `CLOG2(`CDIV(I, O)) : 0)
 
 ///////////////////////////////////////////////////////////////////////////////
 
 `define CACHE_MEM_TAG_WIDTH(mshr_size, num_banks) \
-        (`CLOG2(mshr_size) + `CLOG2(num_banks) + `NC_TAG_BITS)
-        
-`define CACHE_NC_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, tag_width) \
-        (`CLOG2(num_reqs) + `CLOG2(line_size / word_size) + tag_width)
+        (`CLOG2(mshr_size) + `CLOG2(num_banks))
 
 `define CACHE_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, tag_width) \
-        (`CACHE_NC_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, tag_width) + `NC_TAG_BITS)
+        (`CLOG2(num_reqs) + `CLOG2(line_size / word_size) + tag_width)
 
 `define CACHE_NC_MEM_TAG_WIDTH(mshr_size, num_banks, num_reqs, line_size, word_size, tag_width) \
-        `MAX(`CACHE_MEM_TAG_WIDTH(mshr_size, num_banks), `CACHE_NC_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, tag_width))
+        (`MAX(`CACHE_MEM_TAG_WIDTH(mshr_size, num_banks), `CACHE_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, tag_width)) + 1)
 
 ///////////////////////////////////////////////////////////////////////////////
 
 `define CACHE_CLUSTER_CORE_ARB_TAG(tag_width, num_inputs, num_caches) \
-        (tag_width + `ARB_SEL_BITS(num_inputs, `UP(num_caches)))  
+        (tag_width + `ARB_SEL_BITS(num_inputs, `UP(num_caches)))
 
 `define CACHE_CLUSTER_MEM_ARB_TAG(tag_width, num_caches) \
         (tag_width + `ARB_SEL_BITS(`UP(num_caches), 1))
 
 `define CACHE_CLUSTER_MEM_TAG_WIDTH(mshr_size, num_banks, num_caches) \
-        `CACHE_CLUSTER_MEM_ARB_TAG(`CACHE_MEM_TAG_WIDTH(mshr_size, num_banks),  num_caches)
+        `CACHE_CLUSTER_MEM_ARB_TAG(`CACHE_MEM_TAG_WIDTH(mshr_size, num_banks), num_caches)
 
-`define CACHE_CLUSTER_NC_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, tag_width, num_inputs, num_caches) \
-        `CACHE_CLUSTER_MEM_ARB_TAG((`CLOG2(num_reqs) + `CLOG2(line_size / word_size) + `CACHE_CLUSTER_CORE_ARB_TAG(tag_width, num_inputs, num_caches)), num_caches)
-
-`define CACHE_CLUSTER_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, tag_width, num_inputs, num_caches) \
-        `CACHE_CLUSTER_MEM_ARB_TAG((`CACHE_NC_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, `CACHE_CLUSTER_CORE_ARB_TAG(tag_width, num_inputs, num_caches)) + `NC_TAG_BITS), num_caches)
+`define CACHE_CLUSTER_BYPASS_MEM_TAG_WIDTH(num_reqs, line_size, word_size, tag_width, num_inputs, num_caches) \
+        `CACHE_CLUSTER_MEM_ARB_TAG(`CACHE_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, `CACHE_CLUSTER_CORE_ARB_TAG(tag_width, num_inputs, num_caches)), num_caches)
 
 `define CACHE_CLUSTER_NC_MEM_TAG_WIDTH(mshr_size, num_banks, num_reqs, line_size, word_size, tag_width, num_inputs, num_caches) \
-        `CACHE_CLUSTER_MEM_ARB_TAG(`MAX(`CACHE_MEM_TAG_WIDTH(mshr_size, num_banks), `CACHE_NC_BYPASS_TAG_WIDTH(num_reqs, line_size, word_size, `CACHE_CLUSTER_CORE_ARB_TAG(tag_width, num_inputs, num_caches))), num_caches)
+        `CACHE_CLUSTER_MEM_ARB_TAG(`CACHE_NC_MEM_TAG_WIDTH(mshr_size, num_banks, num_reqs, line_size, word_size, `CACHE_CLUSTER_CORE_ARB_TAG(tag_width, num_inputs, num_caches)), num_caches)
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -298,7 +300,12 @@
 `define L1_ENABLE
 `endif
 
-`define VX_MEM_BYTEEN_WIDTH     `L3_LINE_SIZE   
+`define ADDR_TYPE_FLUSH         0
+`define ADDR_TYPE_IO            1
+`define ADDR_TYPE_LOCAL         2 // shoud be last since optional
+`define ADDR_TYPE_WIDTH         (`ADDR_TYPE_LOCAL + `LMEM_ENABLED)
+
+`define VX_MEM_BYTEEN_WIDTH     `L3_LINE_SIZE
 `define VX_MEM_ADDR_WIDTH       (`MEM_ADDR_WIDTH - `CLOG2(`L3_LINE_SIZE))
 `define VX_MEM_DATA_WIDTH       (`L3_LINE_SIZE * 8)
 `define VX_MEM_TAG_WIDTH        L3_MEM_TAG_WIDTH
@@ -349,6 +356,7 @@
     assign dst.req_data.rw = src.req_data.rw; \
     assign dst.req_data.byteen = src.req_data.byteen; \
     assign dst.req_data.addr = src.req_data.addr; \
+    assign dst.req_data.atype = src.req_data.atype; \
     assign dst.req_data.data = src.req_data.data; \
     if (TD != TS) \
         assign dst.req_data.tag = {src.req_data.tag, {(TD-TS){1'b0}}}; \
@@ -359,6 +367,14 @@
     assign src.rsp_data.data = dst.rsp_data.data; \
     assign src.rsp_data.tag = dst.rsp_data.tag[TD-1 -: TS]; \
     assign dst.rsp_ready = src.rsp_ready
+
+`define ASSIGN_VX_LSU_MEM_IF(dst, src) \
+    assign dst.req_valid  = src.req_valid; \
+    assign dst.req_data   = src.req_data; \
+    assign src.req_ready  = dst.req_ready; \
+    assign src.rsp_valid  = dst.rsp_valid; \
+    assign src.rsp_data   = dst.rsp_data; \
+    assign dst.rsp_ready  = src.rsp_ready
 
 `define BUFFER_DCR_BUS_IF(dst, src, enable) \
     logic [(1 + `VX_DCR_ADDR_WIDTH + `VX_DCR_DATA_WIDTH)-1:0] __``dst; \
@@ -374,7 +390,7 @@
 
 `define PERF_COUNTER_ADD(dst, src, field, width, dst_count, src_count, reg_enable) \
     for (genvar __d = 0; __d < dst_count; ++__d) begin \
-        localparam __count = ((src_count > dst_count) ? ((src_count + dst_count - 1) / dst_count) : 1); \
+        localparam __count = ((src_count > dst_count) ? `CDIV(src_count, dst_count) : 1); \
         wire [__count-1:0][width-1:0] __reduce_add_i_``src``field; \
         wire [width-1:0] __reduce_add_o_``dst``field; \
         for (genvar __i = 0; __i < __count; ++__i) begin \
@@ -414,13 +430,10 @@
     data.uuid, \
     data.wis, \
     data.tmask, \
-    data.op_type, \
-    data.op_mod, \
-    data.wb, \
-    data.use_PC, \
-    data.use_imm, \
     data.PC, \
-    data.imm, \
+    data.op_type, \
+    data.op_args, \
+    data.wb, \
     data.rd, \
     tid, \
     data.rs1_data, \
