@@ -10,6 +10,7 @@
 
 #define FLOAT_ULP 6
 #define MAX_NUM_QUBITS 20
+#define DOUBLE_ULP 6
 
 #define RT_CHECK(_expr)                                         \
    do {                                                         \
@@ -70,6 +71,65 @@ public:
     return true;
   }
 };
+
+template <>
+class Comparator<complex> {
+public:
+  static const char* type_str() {
+    return "complex";
+  }
+  static complex generate() {
+    complex c;
+    c.real = static_cast<double>(rand()) / RAND_MAX;
+    c.imag = static_cast<double>(rand()) / RAND_MAX;
+    return c;
+  }
+  static bool compare(complex a, complex b, int index, int errors) {
+    union di_t { double d; int64_t i; };
+    di_t dra, drb;
+    di_t dia, dib;
+    dra.d = a.real;
+    dia.d = a.imag;
+    drb.d = b.real;
+    dib.d = b.imag;
+    auto rd = std::abs(dra.i - drb.i);
+    auto id = std::abs(dia.i - dib.i);
+
+    if (rd > DOUBLE_ULP && id > DOUBLE_ULP) {
+      if (errors < 100) {
+        printf("*** error: [%d] expected=(%lf)+(%lfi), actual=(%lf)+(%lfi)\n", index, b.real, b.imag, a.real, a.imag);
+      }
+      return false;
+    }
+    return true;
+  }
+};
+
+static complex mul(complex c1, complex c2) {
+  complex temp;
+  temp.real = c1.real * c2.real - c1.imag * c2.imag;
+  temp.imag = c1.real * c2.imag - c1.imag * c2.real;
+  return (temp);
+}
+
+static complex add(complex c1, complex c2) {
+  complex temp;
+  temp.real = c1.real + c2.real;
+  temp.imag = c1.imag + c2.imag;
+  return (temp);
+}
+
+static void cmatmul_cpu(TYPE* out, const TYPE* A, const TYPE* B, uint32_t width, uint32_t height) {
+  for (uint32_t row = 0; row < height; ++row) {
+    for (uint32_t col = 0; col < width; ++col) {
+      TYPE sum = {0, 0};
+      for (uint32_t e = 0; e < width; ++e) {
+          sum = add(sum, mul(A[row * width + e], B[e * width + col]));
+      }
+      out[row * width + col] = sum;
+    }
+  }
+}
 
 // static void matmul_cpu(TYPE* out, const TYPE* A, const TYPE* B, uint32_t width, uint32_t height) {
 //   for (uint32_t row = 0; row < height; ++row) {
@@ -149,8 +209,10 @@ void parse(int num_qubits, int max_num_gates, std::string filename, std::vector<
 
   // all qubits are in 0 states
   for (int i = 0; i < num_qubits; i++) {
-    states[2 * i] = 1;
-    states[2 * i + 1] = 0;
+    complex e1 = {1, 0};
+    complex e0 = {0, 0};
+    states[2 * i] = e1;
+    states[2 * i + 1] = e0;
   }
 
   std::string gate_st, qubit_st;
@@ -166,22 +228,29 @@ void parse(int num_qubits, int max_num_gates, std::string filename, std::vector<
       gate_info[qidx].push_back(gate_st);
 
       if (gate_st == "h") {
-        gates[startidx + 4 * ng] = 0.70710678118;
-        gates[startidx + 4 * ng + 1] = 0.70710678118;
-        gates[startidx + 4 * ng + 2] = 0.70710678118;
-        gates[startidx + 4 * ng + 3] = -0.70710678118;
+        complex e1 = {0.70710678118, 0};
+        complex e2 = {-0.70710678118, 0};
+        gates[startidx + 4 * ng] = e1;
+        gates[startidx + 4 * ng + 1] = e1;
+        gates[startidx + 4 * ng + 2] = e1;
+        gates[startidx + 4 * ng + 3] = e2;
       }
       else if (gate_st == "x") {
-        gates[startidx + 4 * ng] = 0;
-        gates[startidx + 4 * ng + 1] = 1;
-        gates[startidx + 4 * ng + 2] = 1;
-        gates[startidx + 4 * ng + 3] = 0;
+        complex e1 = {1, 0};
+        complex e0 = {0, 0};
+        gates[startidx + 4 * ng] = e0;
+        gates[startidx + 4 * ng + 1] = e1;
+        gates[startidx + 4 * ng + 2] = e1;
+        gates[startidx + 4 * ng + 3] = e0;
       }
       else if (gate_st == "z") {
-        gates[startidx + 4 * ng] = 1;
-        gates[startidx + 4 * ng + 1] = 0;
-        gates[startidx + 4 * ng + 2] = 0;
-        gates[startidx + 4 * ng + 3] = -1;
+        complex e1 = {1, 0};
+        complex e0 = {0, 0};
+        complex em1 = {1, 0};
+        gates[startidx + 4 * ng] = e1;
+        gates[startidx + 4 * ng + 1] = e0;
+        gates[startidx + 4 * ng + 2] = e0;
+        gates[startidx + 4 * ng + 3] = em1;
       }
     
     ng_per_qubit[qidx]++;
@@ -191,7 +260,8 @@ void parse(int num_qubits, int max_num_gates, std::string filename, std::vector<
   for (uint32_t i = 0; i < num_qubits; i++) {
     int startidx = 4 * max_num_gates * i;
     int ng = ng_per_qubit[i];
-    gates[startidx + 4 * ng] = 100;    // end flag
+    complex t = {100, 0};
+    gates[startidx + 4 * ng] = t;    // end flag
   }
 
   std::cout << "\n\nAfter Parsing" << "\n";
@@ -300,7 +370,9 @@ int main(int argc, char *argv[]) {
 
   std::cout << "\n\n";
   for (uint32_t i = 0; i < num_qubits; i++) {
-    std::cout << "qubit " << i << " " << h_C[2 * i] << " " << h_C[2 * i + 1] << std::endl;
+    std::cout << "qubit " << i << " ";
+    std::cout << "(" << h_C[2 * i].real << ")+(" << h_C[2 * i].imag << "i) ";
+    std::cout << "(" << h_C[2 * i + 1].real << ")+(" << h_C[2 * i + 1].imag << "i) " << std::endl;
   }
   std::cout << "\n\n";
 

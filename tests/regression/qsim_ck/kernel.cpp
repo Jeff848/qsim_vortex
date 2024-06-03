@@ -8,6 +8,20 @@ inline char is_log2(uint32_t x) {
     return ((x & (x-1)) == 0);
 }
 
+inline complex mul(complex c1, complex c2) {
+  complex temp;
+  temp.real = c1.real * c2.real - c1.imag * c2.imag;
+  temp.imag = c1.real * c2.imag - c1.imag * c2.real;
+  return (temp);
+}
+
+inline complex add(complex c1, complex c2) {
+  complex temp;
+  temp.real = c1.real + c2.real;
+  temp.imag = c1.imag + c2.imag;
+  return (temp);
+}
+
 // task_id: qubit number (qidx)
 void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
 	auto A = reinterpret_cast<TYPE*>(arg->A_addr);
@@ -25,14 +39,16 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
     // g: gate number
     for (uint32_t g = 0; g < (arg->max_num_gates); g++) {
         // end of gate array
-        if (B[st_b + 4 * g] == 100) {
+        if (B[st_b + 4 * g].real == 100) {
             break;
         }
 
         // matrix - vector multiplication
         // applying gates
-        TYPE nv1 = B[st_b + 4*g] * v1 + B[st_b + 4*g + 1] * v2;
-        TYPE nv2 = B[st_b + 4*g + 2] * v1 + B[st_b + 4*g + 3] * v2;
+        // TYPE nv1 = B[st_b + 4*g] * v1 + B[st_b + 4*g + 1] * v2;
+        TYPE nv1 = add(mul(B[st_b + 4*g], v1), mul(B[st_b + 4*g + 1], v2));
+        // TYPE nv2 = B[st_b + 4*g + 2] * v1 + B[st_b + 4*g + 3] * v2;
+        TYPE nv2 = add(mul(B[st_b + 4*g + 2], v1), mul(B[st_b + 4*g + 3], v2));
 
         v1 = nv1;
         v2 = nv2;
