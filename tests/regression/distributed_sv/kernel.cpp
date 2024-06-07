@@ -92,8 +92,6 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
     auto local_states = local_ptr;
     vx_printf("local_states=%x\n", local_states);
 
-    //Each warp operates on 
-
 
     for (uint32_t g = 0; g < (arg->max_num_gates); g++) {
         // end of gate array
@@ -102,9 +100,6 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
         }
         uint32_t num_qubits = num_qubits_arr[g];
         uint32_t num_data = (1 << num_qubits);
-        if (g == 1)
-            vx_printf("cnot\n");
-        
         
         //swap if global index
         //global barrier and swap
@@ -113,63 +108,75 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
         
 
         //Get number of gate operations on core
-        uint32_t num_local_applications = nstates / (num_data * num_cores);
+        uint32_t num_local_applications = states_per_core / num_data;
         uint32_t num_local_per_thread = num_local_applications / (num_warps * num_threads);
-        
+        vx_printf("num_local_applications %d\n", num_local_applications);
         //if num_local_per_thread is less than 0
+        if (num_local_per_thread > 0) {
+            for(uint32_t i = local_ind * num_local_per_thread; 
+                i < local_ind * num_local_per_thread + num_local_per_thread; ++i) {
 
-        for(uint32_t i = local_ind * num_local_per_thread; 
-            i < local_ind * num_local_per_thread + num_local_per_thread; ++i) {
+                //sync across 
+                
+                
+                int z = insert_bits(i, gate_indexes_arr + q, num_qubits, 0);
 
-            //sync across warps
-            
-            
-            int z = insert_bits(i, gate_indexes_arr + q, num_qubits, 0);
+                for(uint32_t j = 0; j < num_data; ++j) {
+                    int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
+                    local_states[i * num_data + j] = states[global_ind * states_per_core + ind];
+                }
 
-            vx_printf("z %d\n", z);
-
-            for(uint32_t j = 0; j < num_data; ++j) {
-                int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
-
-                vx_printf("ind %d\n", global_ind * states_per_core + ind);
-                vx_printf("state ind %d\n", i * num_data + j);
-                local_states[i * num_data + j] = states[global_ind * states_per_core + ind];
-                vx_printf("state data %f\n", states[global_ind * states_per_core + ind]);
+                
+                for(uint32_t j = 0; j < num_data; ++j) {
+                    int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
+                    TYPE temp = 0;
+                    for(uint32_t l = 0; l < num_data; ++l) {
+                        temp += gate_matrix_arr[m + j * num_data + l] * local_states[i * num_data + l];
+                    }
+                    states[global_ind * states_per_core + ind] = temp;
+                }
+                
+               
             }
-
+        } else {
             
-            for(uint32_t j = 0; j < num_data; ++j) {
+            //Assume that we assign each warp to a gate application 
+            uint32_t num_thread_per_app = (num_threads * num_warps) / num_local_applications;
+            uint32_t num_data_per_thread = num_data / num_thread_per_app;
+            uint32_t local_application_ind = local_ind % num_local_applications; 
+            uint32_t app_ind = local_ind / num_local_applications;
+
+            int z = insert_bits(local_application_ind, gate_indexes_arr + q, num_qubits, 0);
+            vx_printf("z: %d\n", z);
+            vx_printf("local_application_ind %d\n", local_application_ind);
+            vx_printf("app_ind %d\n", app_ind);
+            for(uint32_t j = num_data_per_thread * app_ind; j < num_data_per_thread * app_ind + num_data_per_thread; ++j) {
+                int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
+                local_states[local_application_ind * num_data + j] = states[global_ind * states_per_core + ind];
+            }
+            
+            vx_fence();
+            // local barrier
+            vx_barrier(0, num_warps);
+            
+            for(uint32_t j = num_data_per_thread * app_ind; j < num_data_per_thread * app_ind + num_data_per_thread; ++j) {
                 int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
                 TYPE temp = 0;
                 for(uint32_t l = 0; l < num_data; ++l) {
-                    vx_printf("Matrix Data: %f\n", gate_matrix_arr[m + j * num_data + l]);
-                    temp += gate_matrix_arr[m + j * num_data + l] * local_states[i * num_data + l];
+                    temp += gate_matrix_arr[m + j * num_data + l] * local_states[local_application_ind * num_data + l];
                 }
-                vx_printf("temp out: %f\n", temp);
                 states[global_ind * states_per_core + ind] = temp;
             }
-            
-            for(uint32_t j = 0; j < num_data; ++j) {
-                int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
-                vx_printf("res state data %f\n", states[global_ind * states_per_core + ind]);
-            }
         }
-
-        // //Map warps & threads on core to each gate application
-        // uint32_t local_app = local_ind % num_local_applications;
-
-        // vx_printf("num local%d\n", num_local_applications);
-        // vx_printf("local app%d\n", local_app);  
-        
 
         q += num_qubits; 
         m += num_data * num_data;
 
         //sync across warps
         // memory fence
-        vx_fence();
-        // local barrier
-        vx_barrier(0, num_warps);
+        // vx_fence();
+        // // local barrier
+        // vx_barrier(0, num_warps);
     }
 
     vx_printf("task=%d\n", task_id);
