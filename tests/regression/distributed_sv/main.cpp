@@ -88,6 +88,7 @@ public:
 const char* kernel_file = "kernel.vxbin";
 uint32_t size = 32;
 
+
 vx_device_h device = nullptr;
 vx_buffer_h state_buffer = nullptr;
 vx_buffer_h nqubit_buffer = nullptr;

@@ -145,16 +145,16 @@ public:
     void initialize_matrix() {
         // this->gate_name = "CX";
         this->matrix[0] = 1;
-        this->matrix[5] = 1;
+        this->matrix[6] = 1;
         this->matrix[11] = 1;
-        this->matrix[14] = 1;
+        this->matrix[13] = 1;
     }
     void initialize_matrix_reverse() {
         // this->gate_name = "CX";
-        this->matrix[1] = 1;
-        this->matrix[4] = 1;
-        this->matrix[10] = 1;
-        this->matrix[15] = 1;
+        this->matrix[0] = 1;
+        this->matrix[5] = 1;
+        this->matrix[11] = 1;
+        this->matrix[14] = 1;
     }
 };
 

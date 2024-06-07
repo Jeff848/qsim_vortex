@@ -102,7 +102,8 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
         }
         uint32_t num_qubits = num_qubits_arr[g];
         uint32_t num_data = (1 << num_qubits);
-        // vx_printf("%d\n", num_qubits);
+        if (g == 1)
+            vx_printf("cnot\n");
         
         
         //swap if global index
@@ -115,6 +116,8 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
         uint32_t num_local_applications = nstates / (num_data * num_cores);
         uint32_t num_local_per_thread = num_local_applications / (num_warps * num_threads);
         
+        //if num_local_per_thread is less than 0
+
         for(uint32_t i = local_ind * num_local_per_thread; 
             i < local_ind * num_local_per_thread + num_local_per_thread; ++i) {
 
@@ -139,12 +142,13 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
                 int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
                 TYPE temp = 0;
                 for(uint32_t l = 0; l < num_data; ++l) {
+                    vx_printf("Matrix Data: %f\n", gate_matrix_arr[m + j * num_data + l]);
                     temp += gate_matrix_arr[m + j * num_data + l] * local_states[i * num_data + l];
                 }
+                vx_printf("temp out: %f\n", temp);
                 states[global_ind * states_per_core + ind] = temp;
             }
-
-
+            
             for(uint32_t j = 0; j < num_data; ++j) {
                 int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
                 vx_printf("res state data %f\n", states[global_ind * states_per_core + ind]);
@@ -168,9 +172,6 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
         vx_barrier(0, num_warps);
     }
 
-    // for() { //initialize SV elements
-
-    // }
     vx_printf("task=%d\n", task_id);
 }
 
