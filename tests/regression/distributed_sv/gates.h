@@ -17,8 +17,8 @@ public:
     std::vector<int> qubits;
     std::vector<TYPE> matrix; //store data in column-order
     // std::string gate_name;
-    virtual void initialize(std::vector<int> qubit_ordering) = 0;
-    virtual void initialize_matrix() = 0;
+    virtual void initialize(std::vector<int> qubit_ordering) {};
+    virtual void initialize_matrix() {};
 
 
 
@@ -27,11 +27,10 @@ public:
         matrix(mat_size, def_value)
     {}
     
-    // void merge_gates(Gate& a, Gate& b) {
-    //     //qubits is union of a and b
-    //     //matrix is fusion of a and b
-    //     //If fusion is large enough then maybe send off to the GPU?
-    // }
+    Gate(std::vector<int> q_indexes, std::vector<TYPE> d_matrix) : 
+        qubits(q_indexes),
+        matrix(d_matrix)
+    {}
     
 };
 

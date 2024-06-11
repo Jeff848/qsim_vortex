@@ -161,6 +161,37 @@ Gate* generate_gates(std::string gate, std::vector<int>& qubits, std::vector<Gat
     return g;
 }
 
+
+
+Gate* merge_gates(Gate* a, Gate* b) {
+  //qubits is union of a and b
+  //matrix is fusion of a and b
+  //If fusion is large enough then maybe send off to the GPU?
+  std::vector<int> qubits;
+  std::vector<TYPE> matrix;
+  for(int q_a= 0, q_b = 0; q_a < a->qubits.size() || q_b < b->qubits.size();) {
+    if(a->qubits[q_a] == b->qubits[q_b]) {
+      qubits.push_back(a->qubits[q_a]);
+      q_a++;
+      q_b++;
+    } else if (a->qubits[q_a] < b->qubits[q_b]) {
+      qubits.push_back(a->qubits[q_a]);
+      q_a++;
+    } else {
+      qubits.push_back(b->qubits[q_b]);
+      q_b++;
+    }
+  }
+
+
+  // for(int i = 0; i < ) { //gate fusion matrix
+    
+  // }
+
+  Gate* g = new Gate(qubits, matrix);
+  return nullptr;
+}
+
 void convert_gates_to_data(std::vector<Gate*>& gates, std::vector<int>& num_qubits, 
   std::vector<int>& qubit_indexes, std::vector<TYPE>& gate_matrices) {
   uint32_t q_ind = 0;

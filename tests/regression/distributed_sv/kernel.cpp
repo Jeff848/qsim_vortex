@@ -12,7 +12,7 @@ inline char is_log2(uint32_t x) {
 //For actual implementation should allocate at least 2 qubits per node
 //Because we want to work with at least 2 qubit gates
 //Gates array should have matrix size included
-void kernel_swap(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
+void kernel_swap(int group1, int group2) {
     auto num_cores = vx_num_cores();
 	auto num_warps = vx_num_warps();
 	auto num_threads = vx_num_threads();
@@ -20,6 +20,12 @@ void kernel_swap(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
 	auto cid = vx_core_id();
 	auto wid = vx_warp_id();
 	auto tid = vx_thread_id();
+
+    // memory fence
+	vx_fence();
+
+	// global barrier
+	vx_barrier(0x80000000, num_cores);
 }
 
 //bit twiddling
@@ -92,6 +98,8 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
     auto local_states = local_ptr;
     vx_printf("local_states=%x\n", local_states);
 
+    //Per core mapping of original order qubit to swap order
+
 
     for (uint32_t g = 0; g < (arg->max_num_gates); g++) {
         // end of gate array
@@ -117,7 +125,7 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
                 i < local_ind * num_local_per_thread + num_local_per_thread; ++i) {
 
                 //sync across 
-                
+                //map i to permutation
                 
                 int z = insert_bits(i, gate_indexes_arr + q, num_qubits, 0);
 
@@ -125,6 +133,10 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
                     int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
                     local_states[i * num_data + j] = states[global_ind * states_per_core + ind];
                 }
+
+                vx_fence();
+                // local barrier
+                vx_barrier(0, num_warps);
 
                 
                 for(uint32_t j = 0; j < num_data; ++j) {
@@ -136,7 +148,9 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
                     states[global_ind * states_per_core + ind] = temp;
                 }
                 
-               
+                vx_fence();
+                // local barrier
+                vx_barrier(0, num_warps);
             }
         } else {
             
@@ -167,6 +181,10 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
                 }
                 states[global_ind * states_per_core + ind] = temp;
             }
+
+            vx_fence();
+            // local barrier
+            vx_barrier(0, num_warps); 
         }
 
         q += num_qubits; 
