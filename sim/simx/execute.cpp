@@ -40,6 +40,18 @@ union reg_data_t {
   int64_t  i64;
 };
 
+typedef union {
+  double d;
+  int64_t i64;
+  uint64_t u64;
+} idouble;
+
+typedef union {
+  float f;
+  int32_t i32;
+  uint32_t u32;
+} ifloat;
+
 inline uint64_t nan_box(uint32_t value) {
   uint64_t mask = 0xffffffff00000000;
   return value | mask;
@@ -111,7 +123,17 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
             DPN(2, "-");
             continue;
           }
+          // if (opcode == Opcode::FCI) {
+          //   uint64_t r1 = (warp.ireg_file.at(t)[reg] << 32);
+          //   uint64_t r2 = (warp.ireg_file.at(t)[reg+1] & 0xffffffff);
+          //   uint64_t newr = r1 | r2;
+          //   rsdata[t][i].u = newr;
+          // }
+          // else {
+          //  rsdata[t][i].u = warp.ireg_file.at(t)[reg];
+          // }
           rsdata[t][i].u = warp.ireg_file.at(t)[reg];
+          
           DPN(2, "0x" << std::hex << rsdata[t][i].i);
         }
         DPN(2, "}" << std::endl);
@@ -929,6 +951,100 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
       uint32_t frm = this->get_fpu_rm(func3, t, wid);
       uint32_t fflags = 0;
       switch (func7) {
+      case 0x02: {    // @@cmul
+        rddata[t].u64 = rv_cmul(rsdata[t][0].u64, rsdata[t][1].u64, frm, &fflags); // TODO
+        trace->fpu_type = FpuType::FMA;
+        trace->used_fregs.set(rsrc0);
+        trace->used_fregs.set(rsrc1);
+
+        ifloat ar, ai;
+        ar.i32 = rsdata[t][0].u64 >> 32;
+        ai.i32 = rsdata[t][0].u64 & 0xffffffff;
+
+        ifloat br, bi;
+        br.i32 = rsdata[t][1].u64 >> 32;
+        bi.i32 = rsdata[t][1].u64 & 0xffffffff;
+
+        ifloat cr, ci;
+        cr.i32 = rddata[t].u64 >> 32;
+        ci.i32 = rddata[t].u64 & 0xffffffff;
+
+        // printf("[exe] cmul called (%f)(%f) * (%f)(%f) = (%f)(%f) @@@\n", ar.f, ai.f, br.f, bi.f, cr.f, ci.f);
+
+        // // test code
+        // ifloat tra, tia, trb, tib;
+        // tra.f = 0.1234;
+        // tia.f = 0.6789;
+
+        // trb.f = 0.1234;
+        // tib.f = 0.6789;
+
+        // uint64_t tta = ((uint64_t)tra.i32 << 32) | ((uint64_t)tia.i32 & 0xffffffff);
+        // uint64_t ttb = ((uint64_t)trb.i32 << 32) | ((uint64_t)tib.i32 & 0xffffffff);
+
+        // rddata[t].u64 = rv_cmul(tta, ttb, frm, &fflags); // TODO
+        // trace->fpu_type = FpuType::FMA;
+        // trace->used_fregs.set(rsrc0);
+        // trace->used_fregs.set(rsrc1);
+
+        // ifloat cr, ci;
+        // cr.i32 = rddata[t].u64 >> 32;
+        // ci.i32 = rddata[t].u64 & 0xffffffff;
+
+        // printf("@@@ cmul called (%f)(%f) * (%f)(%f) = (%f)(%f) @@@\n", tra.f, tia.f, trb.f, tib.f, cr.f, ci.f);
+        // std::cout << std::hex << "res: 0x" << rddata[t].u64 << std::endl;
+
+        
+        break;
+      }
+
+      // @cadd
+      case 0x03: {
+        // // test code
+        // ifloat tra, tia, trb, tib;
+        // tra.f = 0.1234;
+        // tia.f = 0.6789;
+
+        // trb.f = 0.1234;
+        // tib.f = 0.6789;
+
+        // uint64_t tta = ((uint64_t)tra.i32 << 32) | ((uint64_t)tia.i32 & 0xffffffff);
+        // uint64_t ttb = ((uint64_t)trb.i32 << 32) | ((uint64_t)tib.i32 & 0xffffffff);
+
+        // rddata[t].u64 = rv_cadd(tta, ttb, frm, &fflags); // TODO
+        // trace->fpu_type = FpuType::FMA;
+        // trace->used_fregs.set(rsrc0);
+        // trace->used_fregs.set(rsrc1);
+
+        // ifloat cr, ci;
+        // cr.i32 = rddata[t].u64 >> 32;
+        // ci.i32 = rddata[t].u64 & 0xffffffff;
+
+        // printf("@@@ cadd called (%f)(%f) * (%f)(%f) = (%f)(%f) @@@\n", tra.f, tia.f, trb.f, tib.f, cr.f, ci.f);
+        // std::cout << std::hex << "res: 0x" << rddata[t].u64 << std::endl;
+
+        rddata[t].u64 = rv_cadd(rsdata[t][0].u64, rsdata[t][1].u64, frm, &fflags); // TODO
+        trace->fpu_type = FpuType::FMA;
+        trace->used_fregs.set(rsrc0);
+        trace->used_fregs.set(rsrc1);
+
+        ifloat ar, ai;
+        ar.i32 = rsdata[t][0].u64 >> 32;
+        ai.i32 = rsdata[t][0].u64 & 0xffffffff;
+
+        ifloat br, bi;
+        br.i32 = rsdata[t][1].u64 >> 32;
+        bi.i32 = rsdata[t][1].u64 & 0xffffffff;
+
+        ifloat cr, ci;
+        cr.i32 = rddata[t].u64 >> 32;
+        ci.i32 = rddata[t].u64 & 0xffffffff;
+
+
+        // printf("[exe] cadd called (%f)(%f) * (%f)(%f) = (%f)(%f) @@@\n", ar.f, ai.f, br.f, bi.f, cr.f, ci.f);
+        break;
+      }
+
       case 0x00: { // RV32F: FADD.S
         rddata[t].u64 = nan_box(rv_fadd_s(check_boxing(rsdata[t][0].u64), check_boxing(rsdata[t][1].u64), frm, &fflags));
         trace->fpu_type = FpuType::FMA;
@@ -1438,6 +1554,12 @@ void Emulator::execute(const Instr &instr, uint32_t wid, instr_trace_t *trace) {
             DPN(2, "-");
             continue;
           }
+          // if (opcode == Opcode::FCI) {
+          //   warp.ireg_file.at(t)[rdest] = rddata[t].u64;
+          // }
+          // else {
+          //   warp.ireg_file.at(t)[rdest] = rddata[t].i;
+          // }
           warp.ireg_file.at(t)[rdest] = rddata[t].i;
           DPN(2, "0x" << std::hex << rddata[t].i);
         }

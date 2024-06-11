@@ -38,6 +38,49 @@ inline void rv_init(uint32_t frm) {
 extern "C" {
 #endif
 
+// @cmul
+uint64_t rv_cmul(uint64_t a, uint64_t b, uint32_t frm, uint32_t* fflags) {
+  rv_init(frm);
+  
+  uint32_t a_real = a >> 32;
+  uint32_t a_imag = a & 0xffffffff;
+  uint32_t b_real = b >> 32;
+  uint32_t b_imag = b & 0xffffffff;
+  
+  float32_t c_real = f32_sub(f32_mul(to_float32_t(a_real), to_float32_t(b_real)), f32_mul(to_float32_t(a_imag), to_float32_t(b_imag)));
+  float32_t c_imag = f32_add(f32_mul(to_float32_t(a_imag), to_float32_t(b_real)), f32_mul(to_float32_t(a_real), to_float32_t(b_imag)));
+
+  uint32_t ucr = from_float32_t(c_real);
+  uint64_t ucr64 = ucr;
+  uint32_t uci = from_float32_t(c_imag);
+
+  uint64_t r = (ucr64 << 32) | uci;
+
+  if (fflags) { *fflags = softfloat_exceptionFlags; }
+  return r;
+}
+
+uint64_t rv_cadd(uint64_t a, uint64_t b, uint32_t frm, uint32_t* fflags) {
+  rv_init(frm);
+  
+  uint32_t a_real = a >> 32;
+  uint32_t a_imag = a & 0xffffffff;
+  uint32_t b_real = b >> 32;
+  uint32_t b_imag = b & 0xffffffff;
+  
+  float32_t c_real = f32_add(to_float32_t(a_real), to_float32_t(b_real));
+  float32_t c_imag = f32_add(to_float32_t(a_imag), to_float32_t(b_imag));
+
+  uint32_t ucr = from_float32_t(c_real);
+  uint64_t ucr64 = ucr;
+  uint32_t uci = from_float32_t(c_imag);
+
+  uint64_t r = (ucr64 << 32) | uci;
+
+  if (fflags) { *fflags = softfloat_exceptionFlags; }
+  return r;
+}
+
 uint32_t rv_fadd_s(uint32_t a, uint32_t b, uint32_t frm, uint32_t* fflags) {
   rv_init(frm);
   auto r = f32_add(to_float32_t(a), to_float32_t(b));

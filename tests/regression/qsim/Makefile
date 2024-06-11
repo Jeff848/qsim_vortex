@@ -5,10 +5,10 @@ PROJECT := qsim
 
 SRC_DIR := $(VORTEX_HOME)/tests/regression/$(PROJECT)
 
-SRCS := $(SRC_DIR)/main.cpp
+SRCS := $(SRC_DIR)/main.cpp 
 
 VX_SRCS := $(SRC_DIR)/kernel.cpp
 
-OPTS ?= -n16
+OPTS ?= -n16 
 
 include ../common.mk

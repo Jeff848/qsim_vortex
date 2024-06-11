@@ -284,6 +284,9 @@ static const char* op_string(const Instr &instr) {
   }
   case Opcode::FCI:
     switch (func7) {
+    case 0x02: return "CMUL";       // @cmul
+    case 0x03: return "CADD";       // @cadd
+
     case 0x00: return "FADD.S";
     case 0x01: return "FADD.D";
     case 0x04: return "FSUB.S";
@@ -460,6 +463,14 @@ std::shared_ptr<Instr> Emulator::decode(uint32_t code) const {
     switch (op) {
     case Opcode::FCI:
       switch (func7) {
+
+      case 0x02: // cmul
+      case 0x03: // cadd
+        instr->setDestReg(rd, RegType::Integer);
+        instr->addSrcReg(rs1, RegType::Integer);
+        instr->addSrcReg(rs2, RegType::Integer);
+        break;
+      
       case 0x2c: // FSQRT.S
       case 0x2d: // FSQRT.D
         instr->setDestReg(rd, RegType::Float);

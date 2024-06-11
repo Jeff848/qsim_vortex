@@ -53,6 +53,9 @@ uint32_t rv_fmax_s(uint32_t a, uint32_t b, uint32_t* fflags);
 
 ///////////////////////////////////////////////////////////////////////////////
 
+uint64_t rv_cmul(uint64_t a, uint64_t b, uint32_t frm, uint32_t* fflags);
+uint64_t rv_cadd(uint64_t a, uint64_t b, uint32_t frm, uint32_t* fflags);
+
 uint64_t rv_fadd_d(uint64_t a, uint64_t b, uint32_t frm, uint32_t* fflags);
 uint64_t rv_fsub_d(uint64_t a, uint64_t b, uint32_t frm, uint32_t* fflags);
 uint64_t rv_fmul_d(uint64_t a, uint64_t b, uint32_t frm, uint32_t* fflags);

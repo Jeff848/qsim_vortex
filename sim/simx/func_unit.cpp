@@ -70,7 +70,8 @@ void FpuUnit::tick() {
 			output.push(trace, 2);
 			break;
 		case FpuType::FMA:
-			output.push(trace, LATENCY_FMA+1);
+			// output.push(trace, LATENCY_FMA+1);
+			output.push(trace, 20);
 			break;
 		case FpuType::FDIV:
 			output.push(trace, LATENCY_FDIV+1);

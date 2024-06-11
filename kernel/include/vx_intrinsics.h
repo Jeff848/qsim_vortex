@@ -40,6 +40,8 @@ extern "C" {
 #define RISCV_CUSTOM1   0x2B
 #define RISCV_CUSTOM2   0x5B
 #define RISCV_CUSTOM3   0x7B
+#define RISCV_FCI       0x53
+
 
 #define csr_read(csr) ({                        \
 	size_t __r;	               		            \
@@ -231,6 +233,25 @@ inline int vx_hart_id() {
 
 inline void vx_fence() {
     asm volatile ("fence iorw, iorw");
+}
+
+// @cmul
+inline double vx_cmul(double ca, double cb) {
+    double ret;
+    // r, rs1, rs2 = double
+    // Opcode = FCI
+    // func7 = 0x02 (custom)
+    asm volatile(".insn r %1, 0, 2, %0, %2, %3" : "=r"(ret) : "i"(RISCV_FCI), "r"(ca), "r"(cb));
+    return ret;
+}
+// @cadd
+inline double vx_cadd(double ca, double cb) {
+    double ret;
+    // r, rs1, rs2 = double
+    // Opcode = FCI
+    // func7 = 0x03 (custom)
+    asm volatile(".insn r %1, 0, 3, %0, %2, %3" : "=r"(ret) : "i"(RISCV_FCI), "r"(ca), "r"(cb));
+    return ret;
 }
 
 #ifdef __cplusplus
