@@ -84,13 +84,13 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
     uint32_t global_ind = cid;
     uint32_t local_ind = wid * num_threads + tid;
 
-    vx_printf("global=%d\n", global_ind);
-    vx_printf("local=%d\n", local_ind);
+    // vx_printf("global=%d\n", global_ind);
+    // vx_printf("local=%d\n", local_ind);
 
 
     uint32_t states_per_core = nstates / num_cores;
     auto local_states = local_ptr;
-    vx_printf("local_states=%x\n", local_states);
+    // vx_printf("local_states=%x\n", local_states);
 
 
     for (uint32_t g = 0; g < (arg->max_num_gates); g++) {
@@ -110,7 +110,7 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
         //Get number of gate operations on core
         uint32_t num_local_applications = states_per_core / num_data;
         uint32_t num_local_per_thread = num_local_applications / (num_warps * num_threads);
-        vx_printf("num_local_applications %d\n", num_local_applications);
+        // vx_printf("num_local_applications %d\n", num_local_applications);
         //if num_local_per_thread is less than 0
         if (num_local_per_thread > 0) {
             for(uint32_t i = local_ind * num_local_per_thread; 
@@ -149,9 +149,9 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
             uint32_t app_ind = local_ind / num_local_applications;
 
             int z = insert_bits(local_application_ind, gate_indexes_arr + q, num_qubits, 0);
-            vx_printf("z: %d\n", z);
-            vx_printf("local_application_ind %d\n", local_application_ind);
-            vx_printf("app_ind %d\n", app_ind);
+            // vx_printf("z: %d\n", z);
+            // vx_printf("local_application_ind %d\n", local_application_ind);
+            // vx_printf("app_ind %d\n", app_ind);
             for(uint32_t j = num_data_per_thread * app_ind; j < num_data_per_thread * app_ind + num_data_per_thread; ++j) {
                 int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
                 local_states[local_application_ind * num_data + j] = states[global_ind * states_per_core + ind];
