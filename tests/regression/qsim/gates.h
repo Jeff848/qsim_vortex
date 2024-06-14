@@ -143,8 +143,17 @@ public:
 
     void initialize_matrix() {
         // this->gate_name = "T";
-        this->matrix[0] = 1;
-        this->matrix[3] = -0.70710678118;
+        ifloat f1, f2, f3;
+        f1.f = 1;
+        f2.f = 0.70710678118;
+        f3.f = 0;
+
+        idouble d1, d2, d3;
+        d1.u64 = ((uint64_t)(f1.u32) << 32) | f3.u32;
+        d2.u64 = ((uint64_t)(f2.u32) << 32) | f2.u32;
+
+        this->matrix[0] = d1.d;
+        this->matrix[3] = d2.d;
     }
 };
 
@@ -155,10 +164,18 @@ public:
 
     void initialize_matrix() {
         // this->gate_name = "Tdg";
-        this->matrix[0] = 0.70710678118;
-        this->matrix[1] = 0.70710678118;
-        this->matrix[2] = 0.70710678118;
-        this->matrix[3] = -0.70710678118;
+        ifloat f1, f2, f3, f4;
+        f1.f = 1;
+        f2.f = 0.70710678118;
+        f3.f = 0;
+        f4.f = -0.70710678118;
+
+        idouble d1, d2, d3;
+        d1.u64 = ((uint64_t)(f1.u32) << 32) | f3.u32;
+        d2.u64 = ((uint64_t)(f2.u32) << 32) | f4.u32;
+
+        this->matrix[0] = d1.d;
+        this->matrix[3] = d2.d;
     }
 };
 

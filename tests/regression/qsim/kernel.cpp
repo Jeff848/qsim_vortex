@@ -227,13 +227,13 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
     uint32_t local_ind = wid * num_threads + tid;
     uint32_t nlocalq = arg -> num_local_qubits;
 
-    vx_printf("global=%d\n", global_ind);
-    vx_printf("local=%d\n", local_ind);
-    vx_printf("localq=%d\n", nlocalq);
+    // vx_printf("global=%d\n", global_ind);
+    // vx_printf("local=%d\n", local_ind);
+
 
     uint32_t states_per_core = nstates / num_cores;
     auto local_states = local_ptr;
-    vx_printf("local_states=%x\n", local_states);
+    // vx_printf("local_states=%x\n", local_states);
 
 
     for (uint32_t g = 0; g < (arg->max_num_gates); g++) {
@@ -253,7 +253,7 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
         //Get number of gate operations on core
         uint32_t num_local_applications = states_per_core / num_data;
         uint32_t num_local_per_thread = num_local_applications / (num_warps * num_threads);
-        vx_printf("num_local_applications %d\n", num_local_applications);
+        // vx_printf("num_local_applications %d\n", num_local_applications);
         //if num_local_per_thread is less than 0
         bool has_swapped = false;
         if(local_ind == 0)

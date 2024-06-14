@@ -1,0 +1,20 @@
+OPENQASM 2.0;
+include "temp.inc";
+qreg q[6];
+creg c[6];
+
+h q[0];
+h q[1];
+x q[1];
+x q[2];
+x q[3];
+h q[0];
+z q[4];
+z q[3];
+z q[2];
+h q[0];
+h q[5];
+h q[2];
+x q[5];
+h q[0];
+z q[1];

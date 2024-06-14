@@ -305,7 +305,7 @@ int main(int argc, char *argv[]) {
     infile >> temp;
   }
   uint32_t num_qubits = temp[temp.length() - 3] - '0'; 
-  uint32_t max_num_gates = 20;
+  uint32_t max_num_gates = 30;
   uint32_t num_states = 1<<num_qubits;
   uint32_t num_indexes = 0;
   uint32_t num_matrices = 0;
