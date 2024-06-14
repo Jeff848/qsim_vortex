@@ -101,12 +101,12 @@ uint32_t set_swap_bits(int n, int* qubits, int* swap_qubits, int num_qubits, int
 void swap_op(TYPE* states, int* swap_qubits, int* qubit_indexes, int num_local_ind, TYPE* local_addr, int global_ind, int target_core, int num_qubits) {
     //get bit vector set with the swap qubits that aren't equal to the qubit indexes
     int j = set_swap_bits(0, qubit_indexes, swap_qubits, num_qubits, target_core); 
-    vx_printf("swap bit vector %d\n", j);
+    // vx_printf("swap bit vector %d\n", j);
     for(int i = (target_core << num_local_ind); i < (target_core << num_local_ind) + (1<<num_local_ind); ++i) {
 
         if((j & i) ^ j) { //value should be swapped
             int r = swap_bits_arr(i, qubit_indexes, swap_qubits, num_qubits);
-            vx_printf("i r %d, %d\n", i, r);
+            // vx_printf("i r %d, %d\n", i, r);
             // do swap
             TYPE temp;
             temp = states[i];
@@ -131,7 +131,7 @@ void do_swap(int* qubit_indexes, int num_qubits, int num_local_ind, int* swap_ta
 	auto tid = vx_thread_id();
 
     for(int i = 1; i < num_cores; ++i) {
-        vx_printf("sv pair: %d, %d\n", i, i ^ global_ind);
+        // vx_printf("sv pair: %d, %d\n", i, i ^ global_ind);
         int pair_core = i ^ global_ind;
         swap_op(states, swap_targets, qubit_indexes, num_local_ind, local_addr, global_ind, pair_core, num_qubits);
 
@@ -140,8 +140,6 @@ void do_swap(int* qubit_indexes, int num_qubits, int num_local_ind, int* swap_ta
 
         // global barrier
         vx_barrier(0x80000000, num_cores);
-
-        
     }
 
     for(int q = 0; q < num_qubits; ++q) {
@@ -150,10 +148,9 @@ void do_swap(int* qubit_indexes, int num_qubits, int num_local_ind, int* swap_ta
         qubit_indexes[q] = swap_targets[q];
         swap_targets[q] = temp;
     }
-
 }
 
-void bit_swap(int* qubit_indexes, int num_qubits, int num_local_ind, int* local_addr) {
+bool bit_swap(int* qubit_indexes, int num_qubits, int num_local_ind, int* local_addr) {
     auto num_cores = vx_num_cores();
 	auto num_warps = vx_num_warps();
 	auto num_threads = vx_num_threads();
@@ -168,20 +165,23 @@ void bit_swap(int* qubit_indexes, int num_qubits, int num_local_ind, int* local_
     uint32_t q = 0;
     while (get_bit(b, q) == 1)
         q += 1;
-
+    
+    bool flag = false;
     //Which targets need switching
     int* swap_targets = local_addr;
     for(int i = 0; i < num_qubits; ++i) {
         if (qubit_indexes[i] < num_local_ind)
             swap_targets[i] = qubit_indexes[i];
         else {
-
+            flag = true;
             swap_targets[i] = q;
             q += 1;
             while (get_bit(b, q) == 1)
                 q += 1;
         }
     }
+
+    return flag;
 }
 
 
@@ -255,27 +255,17 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
         uint32_t num_local_per_thread = num_local_applications / (num_warps * num_threads);
         vx_printf("num_local_applications %d\n", num_local_applications);
         //if num_local_per_thread is less than 0
-
-
-        bit_swap(gate_indexes_arr + q, num_qubits, nlocalq, local_swap_arr);
-
-        for(int i = 0; i < num_qubits; ++i) {
-            vx_printf("swap %d ", local_swap_arr[i]);
-        }
-        vx_printf("\n");
-
-        for(int i = 0; i < num_qubits; ++i) {
-            vx_printf("qub : %d, ", (gate_indexes_arr + q)[i]);
-        }
-        vx_printf("\n");
-
-        do_swap(gate_indexes_arr + q, num_qubits, nlocalq, local_swap_arr, states, local_states, global_ind, nstates);
-
-        for(int i = 0; i < num_qubits; ++i) {
-            vx_printf("qub : %d, ", (gate_indexes_arr + q)[i]);
-        }
-        vx_printf("\n");
+        bool has_swapped = false;
+        if(local_ind == 0)
+            has_swapped = bit_swap(gate_indexes_arr + q, num_qubits, nlocalq, local_swap_arr);
+        if (has_swapped && local_ind == 0)
+            do_swap(gate_indexes_arr + q, num_qubits, nlocalq, local_swap_arr, states, local_states, global_ind, nstates);
         
+        // memory fence
+        vx_fence();
+
+        // global barrier
+        vx_barrier(0x80000000, num_cores);
 
         if (num_local_per_thread > 0) {
             for(uint32_t i = local_ind * num_local_per_thread; 
@@ -312,8 +302,8 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
 
             int z = insert_bits(local_application_ind, gate_indexes_arr + q, num_qubits, 0);
             // vx_printf("z: %d\n", z);
-            vx_printf("local_application_ind %d\n", local_application_ind);
-            vx_printf("app_ind %d\n", app_ind);
+            // vx_printf("local_application_ind %d\n", local_application_ind);
+            // vx_printf("app_ind %d\n", app_ind);
             for(uint32_t j = num_data_per_thread * app_ind; j < num_data_per_thread * app_ind + num_data_per_thread; ++j) {
                 int ind = set_bits(z, gate_indexes_arr + q, num_qubits, j);
                 local_states[local_application_ind * num_data + j] = states[global_ind * states_per_core + ind];
@@ -334,26 +324,17 @@ void kernel_body(uint32_t task_id, kernel_arg_t* __UNIFORM__ arg) {
                 states[global_ind * states_per_core + ind] = temp;
             }
         }
+        if (has_swapped && local_ind==0)
+            do_swap(gate_indexes_arr + q, num_qubits, nlocalq, local_swap_arr, states, local_states, global_ind, nstates);
 
-        do_swap(gate_indexes_arr + q, num_qubits, nlocalq, local_swap_arr, states, local_states, global_ind, nstates);
-        for(int i = 0; i < num_qubits; ++i) {
-            vx_printf("swap %d ", local_swap_arr[i]);
-        }
-        vx_printf("\n");
+        // memory fence
+        vx_fence();
 
-        for(int i = 0; i < num_qubits; ++i) {
-            vx_printf("qub : %d, ", (gate_indexes_arr + q)[i]);
-        }
+        // global barrier
+        vx_barrier(0x80000000, num_cores);
 
         q += num_qubits; 
         m += num_data * num_data;
-
-        // do_swap();
-        //sync across warps
-        // memory fence
-        // vx_fence();
-        // // local barrier
-        // vx_barrier(0, num_warps);
     }
 
     vx_printf("task=%d\n", task_id);
