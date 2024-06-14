@@ -9,6 +9,7 @@ typedef struct {
   uint32_t num_tasks;
   uint32_t max_num_gates;
   uint32_t num_qubits;
+  uint32_t num_local_qubits;
   uint32_t num_states;
   uint64_t local_addr;
   uint64_t states_addr;

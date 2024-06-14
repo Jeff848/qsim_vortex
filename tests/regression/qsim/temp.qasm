@@ -4,5 +4,4 @@ qreg q[5];
 creg c[5];
 
 h q[0];
-cx q[0],q[1];
-h q[3];
+cx q[0],q[4];

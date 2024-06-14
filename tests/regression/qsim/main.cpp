@@ -296,7 +296,7 @@ int main(int argc, char *argv[]) {
 
   // std::srand(50);
   // Todo: rel add
-  std::string filename = "/home/ubuntu/qsim_vortex/tests/regression/qsim/temp.qasm";
+  std::string filename = "/home/jm/vortex/tests/regression/qsim/temp.qasm";
   std::ifstream infile(filename);
 
   // first 4 lines
@@ -321,6 +321,8 @@ int main(int argc, char *argv[]) {
   std::vector<Gate*> GateArray;
   // // result state vector
   // std::vector<TYPE> h_C(2 * num_qubits);
+  std::cout << temp << std::endl;
+  std::cout << num_qubits << std::endl;
   
   parse(num_qubits, num_states, max_num_gates, filename, h_A, GateArray, num_matrices, num_indexes);
 
@@ -362,7 +364,7 @@ int main(int argc, char *argv[]) {
   RT_CHECK(vx_dev_caps(device, VX_CAPS_NUM_WARPS, &num_warps));
   RT_CHECK(vx_dev_caps(device, VX_CAPS_NUM_THREADS, &num_threads));
 
-
+  std::cout << "num qubits " << num_qubits << std::endl;
   std::cout << "num gates " << num_gates << std::endl;
   std::cout << "num states " << num_states << std::endl;
   std::cout << "num cores " << num_cores << std::endl;
@@ -372,6 +374,7 @@ int main(int argc, char *argv[]) {
   kernel_arg.num_tasks = num_cores * num_warps * num_threads;
   kernel_arg.max_num_gates = max_num_gates;
   kernel_arg.num_qubits = num_qubits;
+  kernel_arg.num_local_qubits = num_qubits - int(log(num_cores) / log(2));
   kernel_arg.num_states = num_states;
 
   std::cout << "allocate device memory" << std::endl;
@@ -380,7 +383,7 @@ int main(int argc, char *argv[]) {
   RT_CHECK(vx_mem_address(state_buffer, &kernel_arg.states_addr));
   RT_CHECK(vx_mem_alloc(device, nqubit_buf_size, VX_MEM_READ, &nqubit_buffer));
   RT_CHECK(vx_mem_address(nqubit_buffer, &kernel_arg.gate_num_qubits_addr));
-  RT_CHECK(vx_mem_alloc(device, ind_buf_size, VX_MEM_READ, &ind_buffer));
+  RT_CHECK(vx_mem_alloc(device, ind_buf_size, VX_MEM_READ_WRITE, &ind_buffer));
   RT_CHECK(vx_mem_address(ind_buffer, &kernel_arg.gate_qubits_addr));
   RT_CHECK(vx_mem_alloc(device, mat_buf_size, VX_MEM_READ, &matrix_buffer));
   RT_CHECK(vx_mem_address(matrix_buffer, &kernel_arg.gate_matrix_addr));
